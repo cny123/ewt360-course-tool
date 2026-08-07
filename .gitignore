@@ -1,0 +1,25 @@
+__pycache__/
+*.pyc
+.venv/
+.idea/
+
+# Historical copies, generated packages, and local reference material.
+ewt_auto.py
+ewt_auto.py.orig
+ewt_auto.py.patch
+ewt_menu.py
+ewt360-tool/
+ewt360-tool.zip
+chatgpt-shortcut-change.patch
+chatgpt-shortcut-verification.txt
+rollback-chatgpt-shortcut.ps1
+rollback_fast_fix.ps1
+
+ewt360-hmruu/
+ewt360-reverse-engineering/
+EwtAutoStudyBot/
+landuoguo-ewt360/
+luoying2334-EWT360-NEW-Helper/
+zhicheng233-GetEWTAnswers/
+ZNink-EWT360-Helper/
+ZZ0YY-EWT-TOOL/
