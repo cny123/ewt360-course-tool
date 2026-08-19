@@ -20,6 +20,17 @@ pip install -r requirements.txt
 
 依赖: `requests` + `pycryptodome`(或纯 Python 的 `pyaes`, 脚本自动探测)。
 
+手机 Python 3 / 终端建议使用 `python3`：
+
+```bash
+python3 -m pip install -r requirements.txt
+cp .env.example .env
+python3 ewt360_final.py
+```
+
+Termux 可先执行 `pkg update && pkg install python`；Pydroid 3 可在 Pip
+界面安装 `requests`、`pycryptodome` 和 `pyaes`，再从终端运行上面的命令。
+
 ### 运行时配置
 
 签名和加密材料不保存在仓库中。复制 `.env.example` 为项目目录下的 `.env`，
@@ -31,16 +42,16 @@ pip install -r requirements.txt
 
 ```bash
 # 快速验证未完成课程 (默认模式，提交后复查)
-python ewt360_final.py --user 账号 --pass 密码
+python3 ewt360_final.py --user 账号 --pass 密码
 
 # 指定模式
-python ewt360_final.py --user 账号 --pass 密码 --mode diagnose # 只读检查进度，不提交播放数据
-python ewt360_final.py --user 账号 --pass 密码 --mode fast    # 快速验证，未达标会报告
-python ewt360_final.py --user 账号 --pass 密码 --mode bfe     # 真实计时
-python ewt360_final.py --user 账号 --pass 密码 --mode quick   # 已失效, 仅参考
+python3 ewt360_final.py --user 账号 --pass 密码 --mode diagnose # 只读检查进度，不提交播放数据
+python3 ewt360_final.py --user 账号 --pass 密码 --mode fast    # 快速验证，未达标会报告
+python3 ewt360_final.py --user 账号 --pass 密码 --mode bfe     # 真实计时
+python3 ewt360_final.py --user 账号 --pass 密码 --mode quick   # 已失效, 仅参考
 
 # 使用已有 token / 只刷指定课程
-python ewt360_final.py --token <TOKEN> --mode fast --homework-id 10517977 --lesson-ids 117980,65169
+python3 ewt360_final.py --token <TOKEN> --mode fast --homework-id 10517977 --lesson-ids 117980,65169
 ```
 
 ### 方式二: 交互菜单
@@ -51,14 +62,14 @@ python ewt360_final.py --token <TOKEN> --mode fast --homework-id 10517977 --less
 后端复用 ewt360_final.py，登录信息只保存在进程内存中。
 
 ```bash
-python ewt360_final.py
+python3 ewt360_web.py
 ```
 
 手机端：手机与电脑连接同一 Wi-Fi，在电脑上运行下面的命令，
 再用手机浏览器打开终端输出的局域网地址。默认监听仍只允许本机访问。
 
 ```bash
-python ewt360_web.py --host 0.0.0.0 --port 8765
+python3 ewt360_web.py --host 0.0.0.0 --port 8765
 ```
 
 菜单流程: `1 登录` → `2 扫描课程` → `3 诊断` / `4 快速验证` / `5 BFE`

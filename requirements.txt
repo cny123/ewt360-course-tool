@@ -1,3 +1,4 @@
 requests>=2.25
 pycryptodome>=3.10
-# 如果不想装 pycryptodome, 装纯 Python 的 pyaes 也可以 (脚本会自动探测)
+# Android/Pydroid 无法安装 pycryptodome 时，脚本会使用纯 Python 的 pyaes
+pyaes>=1.6.1
