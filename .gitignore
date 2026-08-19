@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 .venv/
+.deps/
 .idea/
 
 # Historical copies, generated packages, and local reference material.

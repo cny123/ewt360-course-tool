@@ -40,6 +40,11 @@ python ewt360_final.py --token <TOKEN> --mode fast --homework-id 10517977 --less
 
 ### 方式二: 交互菜单
 
+### 方式三: HTML 前端 + Python 后端
+
+启动 ewt360_web.py，然后打开 http://127.0.0.1:8765。
+后端复用 ewt360_final.py，登录信息只保存在进程内存中。
+
 ```bash
 python ewt360_final.py
 ```
