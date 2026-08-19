@@ -52,10 +52,15 @@ import json
 import math
 import os
 import random
+import socket
 import sys
+import threading
 import time
+import traceback
 import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 import requests
 
@@ -800,6 +805,220 @@ def interactive_menu() -> None:
 
 
 # ----------------------------------------------------------------------
+# 内置手机网页模式：无需额外 HTML 或后端文件
+# ----------------------------------------------------------------------
+MOBILE_HTML = r'''<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#172c3c"><title>EWT360 手机控制台</title>
+<style>
+:root{--ink:#17212b;--muted:#687680;--line:#d9e0e5;--bg:#f3f6f7;--navy:#172c3c;--teal:#087e78;--green:#25734b;--amber:#a96900;--red:#b44343}*{box-sizing:border-box}body{margin:0;color:var(--ink);background:var(--bg);font:14px/1.45 system-ui,"Microsoft YaHei",sans-serif}.top{padding:12px 14px;color:#fff;background:var(--navy);border-bottom:3px solid #0e9188}.brand{font-size:17px;font-weight:700}.brand b{display:inline-grid;place-items:center;width:29px;height:29px;margin-right:8px;color:var(--navy);background:#55d0c6}.sub{margin-top:3px;color:#a5e9d9;font-size:12px}.wrap{max-width:760px;margin:auto;padding:10px}.panel{margin-bottom:10px;border:1px solid var(--line);background:#fff}.title{padding:10px 12px;font-weight:700;background:#f8fafb;border-bottom:1px solid var(--line)}.body{padding:12px}.field{margin-bottom:9px}label{display:block;margin-bottom:4px;color:var(--muted);font-size:12px}input,select,button{width:100%;min-height:42px;padding:8px 10px;border:1px solid #cbd5db;background:#fff;font:inherit}button{font-weight:700}button.primary{color:#fff;border-color:var(--teal);background:var(--teal)}button.danger{color:var(--red);border-color:#dbb1b1}.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:10px}.metric{padding:9px 8px;border:1px solid var(--line);border-top:3px solid #aab7bf;background:#fff}.metric:nth-child(1){border-top-color:var(--teal)}.metric:nth-child(2){border-top-color:var(--green)}.metric:nth-child(3){border-top-color:#d89b2d}.metric:nth-child(4){border-top-color:var(--red)}.num{font-size:21px;font-weight:700}.metric small{color:var(--muted);font-size:11px}.course{padding:11px 12px;border-bottom:1px solid #edf0f2}.course:last-child{border-bottom:0}.course-head{display:flex;justify-content:space-between;gap:8px}.course-title{font-weight:700;overflow-wrap:anywhere}.id{margin-top:2px;color:#89969e;font:11px Consolas,monospace}.ptext{display:flex;justify-content:space-between;margin:8px 0 4px;color:#53626b;font-size:11px}.bar{height:7px;background:#e7edef}.bar span{display:block;height:100%;background:var(--teal)}.done .bar span{background:var(--green)}.pill{flex:0 0 auto;height:max-content;padding:3px 7px;border:1px solid;font-size:11px}.pill.done{color:var(--green);border-color:#abd7ba;background:#e1f3e8}.pill.todo{color:var(--amber);border-color:#edd295;background:#fff1d5}.log{height:150px;overflow:auto;padding:9px;color:#c9d8df;background:#15232d;font:12px/1.6 Consolas,monospace}.log .ok{color:#71d7a2}.log .warn{color:#f2bf55}.muted{color:var(--muted);font-size:12px}@media(max-width:430px){.metrics{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}.top{padding:11px 12px}.wrap{padding:8px}}
+</style></head><body><header class="top"><div class="brand"><b>E</b>EWT360 手机控制台</div><div class="sub">Python 3 单文件模式 · <span id="state">未登录</span></div></header><main class="wrap">
+<section class="panel"><div class="title">账户</div><div class="body"><div class="field"><label>账号</label><input id="account" autocomplete="username" placeholder="请输入账号"></div><div class="field"><label>密码</label><input id="password" type="text" autocomplete="current-password" placeholder="请输入密码"></div><div class="grid"><button class="primary" id="login">登录</button><button id="scan">扫描课程</button></div><div class="muted" id="accountInfo">登录信息只保存在当前进程内存。</div></div></section>
+<section class="panel"><div class="title">运行控制</div><div class="body"><div class="field"><label>模式</label><select id="mode"><option value="diagnose">只读诊断</option><option value="fast">快速验证</option><option value="bfe">BFE 真实计时</option></select></div><div class="grid"><button class="primary" id="run">开始运行</button><button class="danger" id="stop">停止</button></div></div></section>
+<section class="metrics"><div class="metric"><div class="num" id="total">0</div><small>全部课程</small></div><div class="metric"><div class="num" id="done">0</div><small>已达标</small></div><div class="metric"><div class="num" id="todo">0</div><small>待处理</small></div><div class="metric"><div class="num" id="job">待命</div><small>任务状态</small></div></section>
+<section class="panel"><div class="title">课程列表 <span id="queue">0</span></div><div id="courses"><div class="body muted">登录后扫描课程。</div></div></section>
+<section class="panel"><div class="title">运行日志</div><div class="log" id="logs">等待操作。</div></section></main>
+<script>
+const $=id=>document.getElementById(id),api=async(path,opt={})=>{const r=await fetch(path,{headers:{"Content-Type":"application/json"},...opt});const d=await r.json();if(!r.ok||!d.ok)throw Error(d.error||"请求失败");return d};
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[c]));
+function writeLog(s,kind=""){const box=$("logs"),line=document.createElement("div");line.className=kind;line.textContent=new Date().toLocaleTimeString()+" "+s;box.appendChild(line);box.scrollTop=box.scrollHeight}
+function render(s){const ls=s.lessons||[],done=ls.filter(x=>x.finished||Number(x.percent||0)>=80).length;$("total").textContent=ls.length;$("done").textContent=done;$("todo").textContent=ls.length-done;$("queue").textContent=(s.job?.done||0)+"/"+(s.job?.total||0);$("job").textContent=s.job?.state||"待命";$("state").textContent=s.loggedIn?"已登录":"未登录";if(s.loggedIn)$("accountInfo").textContent="schoolId="+s.schoolId+" · userId="+s.userId;const box=$("courses");box.innerHTML=ls.length?ls.map(x=>{const p=Math.max(0,Math.min(100,Number(x.percent||0))),ok=x.finished||p>=80;return '<article class="course '+(ok?'done':'')+'"><div class="course-head"><div><div class="course-title">'+esc(x.title||x.id)+'</div><div class="id">'+esc(x.subject||"")+' · lessonId='+esc(x.id)+'</div></div><span class="pill '+(ok?'done':'todo')+'">'+(ok?'已达标':'待处理')+'</span></div><div class="ptext"><span>'+p.toFixed(1)+'%</span><span>目标 80%</span></div><div class="bar"><span style="width:'+p+'%"></span></div></article>'}).join(""):'<div class="body muted">暂无课程。</div>';if(s.logs?.length){$("logs").innerHTML="";s.logs.slice(-60).forEach(x=>writeLog(x.message,x.level==="ERR"||x.level==="WARN"?"warn":"ok"))}}
+async function refresh(){try{render((await api("/api/state")).state)}catch(e){writeLog(e.message,"warn")}};
+$("login").onclick=async()=>{try{const a=$("account").value.trim(),p=$("password").value;if(!a||!p)throw Error("请输入账号和密码");render((await api("/api/login",{method:"POST",body:JSON.stringify({account:a,password:p})})).state);writeLog("登录成功","ok")}catch(e){writeLog(e.message,"warn")}};
+$("scan").onclick=async()=>{try{render((await api("/api/scan",{method:"POST",body:"{}"})).state);writeLog("扫描完成","ok")}catch(e){writeLog(e.message,"warn")}};
+$("run").onclick=async()=>{try{render((await api("/api/run",{method:"POST",body:JSON.stringify({mode:$("mode").value})})).state);writeLog("任务已启动","ok")}catch(e){writeLog(e.message,"warn")}};
+$("stop").onclick=async()=>{try{render((await api("/api/stop",{method:"POST",body:"{}"})).state);writeLog("已请求停止","warn")}catch(e){writeLog(e.message,"warn")}};refresh();setInterval(refresh,2000);
+</script></body></html>'''
+
+
+class MobileState:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.token = None
+        self.school_id = None
+        self.user_id = None
+        self.lessons = []
+        self.logs = []
+        self.job = {"state": "idle", "mode": None, "done": 0, "total": 0}
+        self.stop_event = threading.Event()
+
+    def log(self, message, level="INFO"):
+        with self.lock:
+            self.logs.append({"message": str(message), "level": level})
+            self.logs = self.logs[-300:]
+        print(f"[{level}] {message}", flush=True)
+
+    def public(self):
+        with self.lock:
+            return {"loggedIn": bool(self.token), "schoolId": self.school_id,
+                    "userId": self.user_id,
+                    "lessons": [mobile_lesson(x) for x in self.lessons],
+                    "logs": list(self.logs), "job": dict(self.job)}
+
+
+MOBILE_STATE = MobileState()
+
+
+def mobile_lesson(lesson):
+    value = float(lesson.get("percent", lesson.get("ratio", 0)) or 0)
+    return {"id": str(lesson.get("contentId", "")), "title": lesson.get("title", ""),
+            "subject": lesson.get("subject", ""), "contentType": lesson.get("contentType", 1),
+            "percent": value * 100 if value <= 1 else value,
+            "finished": bool(lesson.get("finished", False)), "homeworkId": lesson.get("homeworkId")}
+
+
+def mobile_job(mode):
+    try:
+        with MOBILE_STATE.lock:
+            token, school_id, user_id = MOBILE_STATE.token, MOBILE_STATE.school_id, MOBILE_STATE.user_id
+            lessons = list(MOBILE_STATE.lessons)
+            MOBILE_STATE.job = {"state": "running", "mode": mode, "done": 0, "total": len(lessons)}
+        if not token or school_id is None or user_id is None:
+            raise RuntimeError("登录状态已失效")
+        original_log = log
+
+        def bridge(message, level="INFO"):
+            MOBILE_STATE.log(message, level)
+            original_log(message, level)
+
+        globals()["log"] = bridge
+        try:
+            if mode == "diagnose":
+                for index, lesson in enumerate(lessons, 1):
+                    task = get_task_info(token, school_id, lesson["homeworkId"], lesson["contentId"], lesson.get("contentType", 1))
+                    if task:
+                        lesson["percent"] = float(task.get("percent", 0) or 0)
+                        lesson["finished"] = int(task.get("playTime", 0)) >= int(task.get("finishPlayTime", 0))
+                    with MOBILE_STATE.lock:
+                        MOBILE_STATE.lessons = lessons
+                        MOBILE_STATE.job["done"] = index
+            elif mode == "fast":
+                secret, session_id = get_player_config(token)
+                run_fast(token, lessons, school_id, user_id, secret, session_id)
+            elif mode == "bfe":
+                for index, lesson in enumerate(lessons, 1):
+                    if MOBILE_STATE.stop_event.is_set():
+                        break
+                    secret, session_id = get_player_config(token)
+                    run_bfe_lesson(token, school_id, user_id, lesson["homeworkId"], lesson["contentId"], BIZCODE, secret, session_id)
+                    with MOBILE_STATE.lock:
+                        MOBILE_STATE.job["done"] = index
+                    if index < len(lessons):
+                        time.sleep(5)
+            else:
+                raise ValueError("模式不支持")
+        finally:
+            globals()["log"] = original_log
+        with MOBILE_STATE.lock:
+            MOBILE_STATE.job["state"] = "stopped" if MOBILE_STATE.stop_event.is_set() else "done"
+    except Exception as exc:
+        MOBILE_STATE.log(f"运行失败: {exc}", "ERR")
+        traceback.print_exc()
+        with MOBILE_STATE.lock:
+            MOBILE_STATE.job["state"] = "error"
+            MOBILE_STATE.job["error"] = str(exc)
+
+
+class MobileHandler(BaseHTTPRequestHandler):
+    def log_message(self, fmt, *args):
+        return
+
+    def send_json(self, payload, status=200):
+        raw = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(raw)
+
+    def body(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length > 1_000_000:
+            raise ValueError("请求过大")
+        return json.loads(self.rfile.read(length) or b"{}")
+
+    def do_GET(self):
+        path = urlparse(self.path).path
+        if path in ("/", "/index.html"):
+            raw = MOBILE_HTML.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(raw)))
+            self.end_headers()
+            self.wfile.write(raw)
+        elif path == "/api/health":
+            self.send_json({"ok": True, "service": "ewt360_mobile"})
+        elif path == "/api/state":
+            self.send_json({"ok": True, "state": MOBILE_STATE.public()})
+        else:
+            self.send_json({"ok": False, "error": "not found"}, 404)
+
+    def do_POST(self):
+        try:
+            path, data = urlparse(self.path).path, self.body()
+            if path == "/api/login":
+                account, password = str(data.get("account", "")).strip(), str(data.get("password", ""))
+                if not account or not password:
+                    raise ValueError("账号和密码不能为空")
+                token = login(account, password)
+                school_id, user_id = get_school_user_info(token)
+                with MOBILE_STATE.lock:
+                    MOBILE_STATE.token, MOBILE_STATE.school_id, MOBILE_STATE.user_id = token, school_id, user_id
+                    MOBILE_STATE.lessons, MOBILE_STATE.logs = [], []
+                    MOBILE_STATE.job = {"state": "idle", "mode": None, "done": 0, "total": 0}
+                MOBILE_STATE.log(f"登录成功: schoolId={school_id} userId={user_id}", "OK")
+            elif path == "/api/scan":
+                if not MOBILE_STATE.token:
+                    raise RuntimeError("请先登录")
+                lessons = scan_lessons(MOBILE_STATE.token, MOBILE_STATE.school_id)
+                with MOBILE_STATE.lock:
+                    MOBILE_STATE.lessons = lessons
+                MOBILE_STATE.log(f"扫描完成: {len(lessons)} 门课程", "OK")
+            elif path == "/api/run":
+                if not MOBILE_STATE.token:
+                    raise RuntimeError("请先登录")
+                mode = str(data.get("mode", "diagnose"))
+                if mode not in {"diagnose", "fast", "bfe"}:
+                    raise ValueError("模式不支持")
+                with MOBILE_STATE.lock:
+                    if MOBILE_STATE.job.get("state") == "running":
+                        raise RuntimeError("已有任务正在运行")
+                    MOBILE_STATE.stop_event.clear()
+                threading.Thread(target=mobile_job, args=(mode,), daemon=True).start()
+            elif path == "/api/stop":
+                MOBILE_STATE.stop_event.set()
+                MOBILE_STATE.log("已请求停止任务", "WARN")
+            elif path == "/api/logout":
+                with MOBILE_STATE.lock:
+                    MOBILE_STATE.token = MOBILE_STATE.school_id = MOBILE_STATE.user_id = None
+                    MOBILE_STATE.lessons = []
+                MOBILE_STATE.log("已退出当前会话")
+            else:
+                self.send_json({"ok": False, "error": "not found"}, 404)
+                return
+            self.send_json({"ok": True, "state": MOBILE_STATE.public()})
+        except Exception as exc:
+            self.send_json({"ok": False, "error": str(exc)}, 400)
+
+
+def run_mobile_web(host="127.0.0.1", port=8765):
+    server = ThreadingHTTPServer((host, port), MobileHandler)
+    print(f"本机访问 http://127.0.0.1:{port}", flush=True)
+    if host == "0.0.0.0":
+        try:
+            lan_ip = socket.gethostbyname(socket.gethostname())
+        except OSError:
+            lan_ip = "电脑或手机局域网IP"
+        print(f"手机访问 http://{lan_ip}:{port}", flush=True)
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        print("\n服务已停止")
+    finally:
+        server.server_close()
+
+
+# ----------------------------------------------------------------------
 # 入口
 # ----------------------------------------------------------------------
 def main() -> None:
@@ -807,6 +1026,9 @@ def main() -> None:
         interactive_menu()
         return
     ap = argparse.ArgumentParser(description="EWT360 课程进度自动提交 (hmruu/ewt360 思路)")
+    ap.add_argument("--web", action="store_true", help="启动内置手机网页控制台")
+    ap.add_argument("--host", default="127.0.0.1", help="网页监听地址，默认仅本机")
+    ap.add_argument("--port", type=int, default=8765, help="网页监听端口")
     ap.add_argument("--user", help="登录账号(手机号)")
     ap.add_argument("--pass", dest="password", help="登录密码")
     ap.add_argument("--token", help="已有 token (优先于账号密码登录)")
@@ -819,6 +1041,10 @@ def main() -> None:
     ap.add_argument("--header-sign", action="store_true",
                     help="给 updateUserLessonTaskV2 附加 Gateway header 签名")
     args = ap.parse_args()
+
+    if args.web:
+        run_mobile_web(args.host, args.port)
+        return
 
     if not args.token and not (args.user and args.password):
         ap.error("需要 --token 或 --user/--pass")

@@ -7,7 +7,7 @@
 
 | 文件 | 用途 |
 |---|---|
-| `ewt360_final.py` | **唯一入口** (CLI + 字符版交互菜单) |
+| `ewt360_final.py` | **唯一入口** (CLI + 字符菜单 + 手机网页控制台) |
 | `requirements.txt` | 依赖清单 |
 | `PRD.md` | 产品需求文档 (实测结论/接口/风控, 后续开发依据) |
 | `README.md` | 本文件 |
@@ -56,20 +56,20 @@ python3 ewt360_final.py --token <TOKEN> --mode fast --homework-id 10517977 --les
 
 ### 方式二: 交互菜单
 
-### 方式三: HTML 前端 + Python 后端
+### 方式三: 单文件手机网页模式
 
-启动 ewt360_web.py，然后打开 http://127.0.0.1:8765。
-后端复用 ewt360_final.py，登录信息只保存在进程内存中。
+同一个 Python 文件同时提供网页和后端，打开 http://127.0.0.1:8765。
+登录信息只保存在当前进程内存中。
 
 ```bash
-python3 ewt360_web.py
+python3 ewt360_final.py --web
 ```
 
 手机端：手机与电脑连接同一 Wi-Fi，在电脑上运行下面的命令，
 再用手机浏览器打开终端输出的局域网地址。默认监听仍只允许本机访问。
 
 ```bash
-python3 ewt360_web.py --host 0.0.0.0 --port 8765
+python3 ewt360_final.py --web --host 0.0.0.0 --port 8765
 ```
 
 菜单流程: `1 登录` → `2 扫描课程` → `3 诊断` / `4 快速验证` / `5 BFE`
