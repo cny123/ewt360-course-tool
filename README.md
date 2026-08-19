@@ -60,6 +60,9 @@ python3 ewt360_final.py --token <TOKEN> --mode fast --homework-id 10517977 --les
 同一个 Python 文件同时提供网页和后端，打开 http://127.0.0.1:8765。
 登录信息只保存在当前进程内存中。
 
+网页支持账号密码登录、已有 Token 登录、退出登录、扫描课程、
+课程搜索、按完成状态筛选、只读诊断、快速验证、BFE 计时和停止任务。
+
 ```bash
 python3 ewt360_final.py --web
 ```
