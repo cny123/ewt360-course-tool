@@ -10,8 +10,8 @@ EWT360 课程进度自动提交工具 —— 基于 hmruu/ewt360 仓库思路实
      直接调用 gateway 的 updateUserLessonTaskV2，把 playTime / clientLessonTime
      设为 88888888，携带 body 签名一次提交完成。
      body 签名算法（仓库 课程刷取.py / ewt360.js）：
-        sign = MD5("EWT360_BODY_SALT" + clientLessonTime + homeworkId
-                   + lessonId + playTime + "EWT360_BODY_SALT")
+        sign = MD5(BODY_SALT + clientLessonTime + homeworkId
+                   + lessonId + playTime + BODY_SALT)
      ⚠️ 2026-08 实测: 该接口已被平台改为假成功(返回 success 但进度不涨), 仅保留作参考
 
   2) bfe 保守模式
@@ -50,6 +50,7 @@ import hashlib
 import hmac
 import json
 import math
+import os
 import random
 import sys
 import time
@@ -68,17 +69,6 @@ if sys.platform == "win32":
 # 常量
 # ----------------------------------------------------------------------
 GATEWAY = "https://gateway.ewt360.com"
-
-# Gateway header 签名密钥: secretId=1 APP 端 / secretId=2 Web 端
-SECRET_APP = "EWT360_SECRET_APP"
-SECRET_WEB = "EWT360_SECRET_WEB"
-
-# 登录密码 AES-CBC 加密参数
-AES_KEY = b"EWT360_AES_KEY"
-AES_IV = b"EWT360_AES_IV"
-
-# updateUserLessonTaskV2 body 签名使用的盐
-BODY_SALT = "EWT360_BODY_SALT"
 
 # 已废弃: updateUserLessonTaskV2 已被平台改为假成功(返回 success 但不记账)
 # 实测 2026-08: 无论 playTime 填什么值, 进度均不变化。真正有效的是 BFE 心跳上报。
@@ -101,6 +91,21 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 def log(msg: str, level: str = "INFO") -> None:
     tag = {"INFO": "[*]", "OK": "[+]", "WARN": "[!]", "ERR": "[-]"}.get(level, "[*]")
     print(f"{tag} {msg}", flush=True)
+
+
+def required_setting(name: str) -> str:
+    value = os.getenv(name)
+    if not value:
+        raise RuntimeError(f"缺少环境变量 {name}，请参考 .env.example")
+    return value
+
+
+def aes_material() -> tuple[bytes, bytes]:
+    key = required_setting("EWT360_AES_KEY").encode("utf-8")
+    iv = required_setting("EWT360_AES_IV").encode("utf-8")
+    if len(key) not in (16, 24, 32) or len(iv) != 16:
+        raise RuntimeError("EWT360_AES_KEY 必须为 16/24/32 字节，EWT360_AES_IV 必须为 16 字节")
+    return key, iv
 
 
 def now_ms() -> int:
@@ -139,7 +144,8 @@ try:
     from Crypto.Util.Padding import pad as _pad
 
     def aes_cbc_encrypt(plain_text: str) -> str:
-        cipher = _AES.new(AES_KEY, _AES.MODE_CBC, AES_IV)
+        key, iv = aes_material()
+        cipher = _AES.new(key, _AES.MODE_CBC, iv)
         return binascii.hexlify(
             cipher.encrypt(_pad(plain_text.encode("utf-8"), 16))
         ).decode("utf-8").upper()
@@ -149,10 +155,11 @@ except ImportError:
         import pyaes
 
         def aes_cbc_encrypt(plain_text: str) -> str:
+            key, iv = aes_material()
             raw = plain_text.encode("utf-8")
             pad_len = 16 - len(raw) % 16
             raw += bytes([pad_len]) * pad_len
-            aes = pyaes.AESModeOfOperationCBC(key=AES_KEY, iv=AES_IV)
+            aes = pyaes.AESModeOfOperationCBC(key=key, iv=iv)
             return binascii.b2a_hex(aes.encrypt(raw)).decode("utf-8").upper()
 
     except ImportError:
@@ -168,12 +175,13 @@ except ImportError:
 def login(account: str, password: str) -> str:
     """Web 端登录 (secretId=2)，返回 token"""
     ts = now_ms()
+    web_secret = required_setting("EWT360_SECRET_WEB")
     headers = {
         "Content-Type": "application/json;charset=UTF-8",
         "platform": "1",
         "secretid": "2",
         "timestamp": str(ts),
-        "sign": hashlib.md5(f"{ts}{SECRET_WEB}".encode()).hexdigest().upper(),
+        "sign": hashlib.md5(f"{ts}{web_secret}".encode()).hexdigest().upper(),
         "User-Agent": UA,
     }
     body = {
@@ -289,7 +297,8 @@ def get_lesson_detail(token: str, homework_id: int, lesson_id: int, school_id: i
 # ----------------------------------------------------------------------
 def make_body_sign(client_lesson_time: int, homework_id: int,
                    lesson_id: int, play_time: int) -> str:
-    raw = f"{BODY_SALT}{client_lesson_time}{homework_id}{lesson_id}{play_time}{BODY_SALT}"
+    salt = required_setting("EWT360_BODY_SALT")
+    raw = f"{salt}{client_lesson_time}{homework_id}{lesson_id}{play_time}{salt}"
     return hashlib.md5(raw.encode()).hexdigest()
 
 
@@ -309,8 +318,9 @@ def submit_direct(token: str, homework_id: int, lesson_id: int,
         "User-Agent": "okhttp/3.12.0",
     }
     if header_sign:  # 仓库逆向文档中的 Gateway header 签名, 默认可不带
+        app_secret = required_setting("EWT360_SECRET_APP")
         headers["timestamp"] = str(ts)
-        headers["sign"] = hashlib.md5(f"{ts}{SECRET_APP}".encode()).hexdigest().upper()
+        headers["sign"] = hashlib.md5(f"{ts}{app_secret}".encode()).hexdigest().upper()
 
     body = {
         "homeworkId": str(homework_id),
@@ -435,11 +445,12 @@ def report_bfe_round(token: str, session_id: str, user_id: int, school_id: int,
 def report_video_point(token: str, homework_id: int, lesson_id: int) -> None:
     """结束后的监测上报"""
     ts = now_ms()
+    app_secret = required_setting("EWT360_SECRET_APP")
     headers = {
         "Content-Type": "application/json",
         "token": token,
         "timestamp": str(ts),
-        "sign": hashlib.md5(f"{ts}{SECRET_APP}".encode()).hexdigest(),
+        "sign": hashlib.md5(f"{ts}{app_secret}".encode()).hexdigest(),
     }
     body = {
         "homeworkId": homework_id, "lessonId": lesson_id, "type": 1,

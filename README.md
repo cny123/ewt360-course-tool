@@ -20,6 +20,12 @@ pip install -r requirements.txt
 
 依赖: `requests` + `pycryptodome`(或纯 Python 的 `pyaes`, 脚本自动探测)。
 
+### 运行时配置
+
+签名和加密材料不保存在仓库中。复制 `.env.example` 为本地配置文件，
+在当前 PowerShell 会话中设置对应环境变量后再运行脚本。不要将包含真实值的
+配置文件提交到 Git。
+
 ## 🚀 使用
 
 ### 方式一: 命令行 (推荐)

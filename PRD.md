@@ -69,12 +69,12 @@
 
 | 项 | 值 | 用途 |
 |---|---|---|
-| Gateway secretId=1 | `EWT360_SECRET_APP` | APP 端 header 签名 `MD5(ts+key).toUpperCase()` |
-| Gateway secretId=2 | `EWT360_SECRET_WEB` | Web 端登录签名 `MD5(ts+key).toUpperCase()` |
-| AES Key | `EWT360_AES_KEY` (32B) | 登录密码加密 |
-| AES IV | `EWT360_AES_IV` (16B) | 同上, CBC/PKCS7, 输出大写 hex |
-| BFE HMAC | `getPlayerGlobalConf` 动态获取 `globalInfo.secret` | BFE 签名 |
-| dlog 盐 | `EWT360_BODY_SALT` | dlog 的 MD5 密钥 (`MD5("log="+payload+"&key="+盐)`), **该接口已失效** |
+| Gateway secretId=1 | `EWT360_SECRET_APP` 环境变量 | APP 端 header 签名 `MD5(ts+key).toUpperCase()` |
+| Gateway secretId=2 | `EWT360_SECRET_WEB` 环境变量 | Web 端登录签名 `MD5(ts+key).toUpperCase()` |
+| AES Key | `EWT360_AES_KEY` 环境变量 (16/24/32B) | 登录密码加密 |
+| AES IV | `EWT360_AES_IV` 环境变量 (16B) | 同上, CBC/PKCS7, 输出大写 hex |
+| BFE HMAC | `getPlayerGlobalConf` 动态获取 `globalInfo.secret` | BFE 签名, 仅运行时使用 |
+| dlog 盐 | `EWT360_BODY_SALT` 环境变量 | 旧接口的 MD5 密钥, **该接口已失效** |
 
 **BFE 签名算法**:
 ```
@@ -95,9 +95,10 @@ Body: CommonPackage(设备信息, mstid=token) + EventPackage[1条]
    point_time=60000, point_num, speed, quality, action=2, status=1}
 ```
 
-### 2.5 账号验证环境
+### 2.5 运行时配置与账号验证环境
 
 - 测试账号信息不写入仓库；运行时通过交互输入或命令行参数提供
+- 签名与加密材料不写入仓库；运行前通过 `.env.example` 中列出的环境变量注入
 
 ---
 
@@ -169,7 +170,7 @@ workspace/
 
 | 仓库 | 要点 |
 |---|---|
-| hmruu/ewt360 | updateUserLessonTaskV2 body 盐 `EWT360_BODY_SALT`; 油猴脚本 |
+| hmruu/ewt360 | updateUserLessonTaskV2 body 盐（运行时配置为 `EWT360_BODY_SALT`）; 油猴脚本 |
 | 15812642/ewt360-reverse-engineering | 密钥体系/API 全量逆向文档 |
 | yangsongh/EwtAutoStudyBot | Web 端 BFE 真实计时逐分钟上报; 多账号 |
 | landuoguo/ewt360 | dlog 速通 (2023, 已失效); BFE v3 真实计时 |
