@@ -8,6 +8,8 @@ memory for the lifetime of this process and are never written to disk.
 from __future__ import annotations
 
 import json
+import argparse
+import socket
 import sys
 import threading
 import traceback
@@ -252,8 +254,18 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main() -> None:
-    server = ThreadingHTTPServer((HOST, PORT), Handler)
-    print(f"打开浏览器访问 http://{HOST}:{PORT}", flush=True)
+    parser = argparse.ArgumentParser(description="EWT360 本地网页控制台")
+    parser.add_argument("--host", default=HOST, help="监听地址，默认仅本机访问")
+    parser.add_argument("--port", type=int, default=PORT, help="监听端口")
+    args = parser.parse_args()
+    server = ThreadingHTTPServer((args.host, args.port), Handler)
+    print(f"本机访问 http://127.0.0.1:{args.port}", flush=True)
+    if args.host == "0.0.0.0":
+        try:
+            lan_ip = socket.gethostbyname(socket.gethostname())
+        except OSError:
+            lan_ip = "电脑局域网IP"
+        print(f"同一 Wi-Fi 手机访问 http://{lan_ip}:{args.port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

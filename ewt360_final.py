@@ -55,8 +55,28 @@ import random
 import sys
 import time
 import uuid
+from pathlib import Path
 
 import requests
+
+
+def load_local_env() -> None:
+    """Load simple KEY=VALUE entries from the ignored local .env file."""
+    path = Path(__file__).with_name(".env")
+    if not path.is_file():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+load_local_env()
 
 if sys.platform == "win32":
     try:
