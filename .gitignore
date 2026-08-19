@@ -3,10 +3,6 @@ __pycache__/
 .venv/
 .deps/
 .idea/
-.env
-.env.*
-!.env.example
-
 # Historical copies, generated packages, and local reference material.
 ewt_auto.py
 ewt_auto.py.orig

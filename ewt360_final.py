@@ -50,7 +50,6 @@ import hashlib
 import hmac
 import json
 import math
-import os
 import random
 import socket
 import sys
@@ -59,29 +58,9 @@ import time
 import traceback
 import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
-
-
-def load_local_env() -> None:
-    """Load simple KEY=VALUE entries from the ignored local .env file."""
-    path = Path(__file__).with_name(".env")
-    if not path.is_file():
-        return
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        if key and key not in os.environ:
-            os.environ[key] = value
-
-
-load_local_env()
 
 if sys.platform == "win32":
     try:
@@ -94,6 +73,13 @@ if sys.platform == "win32":
 # 常量
 # ----------------------------------------------------------------------
 GATEWAY = "https://gateway.ewt360.com"
+
+# 单文件运行所需的协议参数。用户只需输入账号/密码或提供 token。
+SECRET_APP = "4dcc69ed56d6"
+SECRET_WEB = "bdc739ff2dcf"
+AES_KEY = b"20171109124536982017110912453698"
+AES_IV = b"2017110912453698"
+BODY_SALT = "eo^nye1j#!wt2%v)"
 
 # 已废弃: updateUserLessonTaskV2 已被平台改为假成功(返回 success 但不记账)
 # 实测 2026-08: 无论 playTime 填什么值, 进度均不变化。真正有效的是 BFE 心跳上报。
@@ -118,19 +104,8 @@ def log(msg: str, level: str = "INFO") -> None:
     print(f"{tag} {msg}", flush=True)
 
 
-def required_setting(name: str) -> str:
-    value = os.getenv(name)
-    if not value:
-        raise RuntimeError(f"缺少环境变量 {name}，请参考 .env.example")
-    return value
-
-
 def aes_material() -> tuple[bytes, bytes]:
-    key = required_setting("EWT360_AES_KEY").encode("utf-8")
-    iv = required_setting("EWT360_AES_IV").encode("utf-8")
-    if len(key) not in (16, 24, 32) or len(iv) != 16:
-        raise RuntimeError("EWT360_AES_KEY 必须为 16/24/32 字节，EWT360_AES_IV 必须为 16 字节")
-    return key, iv
+    return AES_KEY, AES_IV
 
 
 def now_ms() -> int:
@@ -200,13 +175,12 @@ except ImportError:
 def login(account: str, password: str) -> str:
     """Web 端登录 (secretId=2)，返回 token"""
     ts = now_ms()
-    web_secret = required_setting("EWT360_SECRET_WEB")
     headers = {
         "Content-Type": "application/json;charset=UTF-8",
         "platform": "1",
         "secretid": "2",
         "timestamp": str(ts),
-        "sign": hashlib.md5(f"{ts}{web_secret}".encode()).hexdigest().upper(),
+        "sign": hashlib.md5(f"{ts}{SECRET_WEB}".encode()).hexdigest().upper(),
         "User-Agent": UA,
     }
     body = {
@@ -322,8 +296,7 @@ def get_lesson_detail(token: str, homework_id: int, lesson_id: int, school_id: i
 # ----------------------------------------------------------------------
 def make_body_sign(client_lesson_time: int, homework_id: int,
                    lesson_id: int, play_time: int) -> str:
-    salt = required_setting("EWT360_BODY_SALT")
-    raw = f"{salt}{client_lesson_time}{homework_id}{lesson_id}{play_time}{salt}"
+    raw = f"{BODY_SALT}{client_lesson_time}{homework_id}{lesson_id}{play_time}{BODY_SALT}"
     return hashlib.md5(raw.encode()).hexdigest()
 
 
@@ -343,9 +316,8 @@ def submit_direct(token: str, homework_id: int, lesson_id: int,
         "User-Agent": "okhttp/3.12.0",
     }
     if header_sign:  # 仓库逆向文档中的 Gateway header 签名, 默认可不带
-        app_secret = required_setting("EWT360_SECRET_APP")
         headers["timestamp"] = str(ts)
-        headers["sign"] = hashlib.md5(f"{ts}{app_secret}".encode()).hexdigest().upper()
+        headers["sign"] = hashlib.md5(f"{ts}{SECRET_APP}".encode()).hexdigest().upper()
 
     body = {
         "homeworkId": str(homework_id),
@@ -470,12 +442,11 @@ def report_bfe_round(token: str, session_id: str, user_id: int, school_id: int,
 def report_video_point(token: str, homework_id: int, lesson_id: int) -> None:
     """结束后的监测上报"""
     ts = now_ms()
-    app_secret = required_setting("EWT360_SECRET_APP")
     headers = {
         "Content-Type": "application/json",
         "token": token,
         "timestamp": str(ts),
-        "sign": hashlib.md5(f"{ts}{app_secret}".encode()).hexdigest(),
+        "sign": hashlib.md5(f"{ts}{SECRET_APP}".encode()).hexdigest(),
     }
     body = {
         "homeworkId": homework_id, "lessonId": lesson_id, "type": 1,

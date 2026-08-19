@@ -24,17 +24,16 @@ pip install -r requirements.txt
 
 ```bash
 python3 -m pip install -r requirements.txt
-cp .env.example .env
 python3 ewt360_final.py
 ```
 
 Termux 可先执行 `pkg update && pkg install python`；Pydroid 3 可在 Pip
 界面安装 `requests`、`pycryptodome` 和 `pyaes`，再从终端运行上面的命令。
 
-### 运行时配置
+### 登录方式
 
-签名和加密材料不保存在仓库中。复制 `.env.example` 为项目目录下的 `.env`，
-填入本地配置后直接运行脚本即可自动读取。`.env` 已被 Git 忽略，不要提交到仓库。
+不需要环境变量或 `.env` 文件。直接运行脚本后在菜单输入账号密码，
+也可以使用命令行参数 `--user/--pass`，或直接提供已有 `--token`。
 
 ## 🚀 使用
 
